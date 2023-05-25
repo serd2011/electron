@@ -179,6 +179,9 @@ class NativeWindowMac : public NativeWindow,
     has_deferred_window_close_ = defer_close;
   }
 
+  void OrderChildren();
+  void OrderOutChildren();
+
   enum class VisualEffectState {
     kFollowWindow,
     kActive,
@@ -227,6 +230,8 @@ class NativeWindowMac : public NativeWindow,
 
   ElectronNSWindow* window_;  // Weak ref, managed by widget_.
 
+  ElectronNSWindow* window() { return window_; }
+
   base::scoped_nsobject<ElectronNSWindowDelegate> window_delegate_;
   base::scoped_nsobject<ElectronPreviewItem> preview_item_;
   base::scoped_nsobject<ElectronTouchBar> touch_bar_;
@@ -249,6 +254,17 @@ class NativeWindowMac : public NativeWindow,
 
   // The presentation options before entering kiosk mode.
   NSApplicationPresentationOptions kiosk_options_;
+
+  std::list<NativeWindowMac*> child_windows_;
+
+  void add_child_window(NativeWindowMac* child_window) {
+    child_windows_.push_back(child_window);
+  }
+
+  void remove_child_window(NativeWindowMac* child_window) {
+    child_windows_.remove_if(
+        [&child_window](NativeWindowMac* w) { return (w == child_window); });
+  }
 
   // The "visualEffectState" option.
   VisualEffectState visual_effect_state_ = VisualEffectState::kFollowWindow;

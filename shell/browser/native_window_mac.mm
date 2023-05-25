@@ -472,14 +472,7 @@ void NativeWindowMac::Hide() {
     return;
   }
 
-  // Hide all children of the current window before hiding the window.
-  // components/remote_cocoa/app_shim/native_widget_ns_window_bridge.mm
-  // expects this when window visibility changes.
-  if ([window_ childWindows]) {
-    for (NSWindow* child in [window_ childWindows]) {
-      [child orderOut:nil];
-    }
-  }
+  OrderOutChildren();
 
   // Detach the window from the parent before.
   if (parent())
@@ -597,6 +590,33 @@ bool NativeWindowMac::HandleDeferredClose() {
     return true;
   }
   return false;
+}
+
+void NativeWindowMac::OrderChildren() {
+  // Adding a child to a window that isn't visible on the active space will
+  // switch to that space - defer adding children until the window is visible.
+  if (![window_ isVisible] || ![window_ isOnActiveSpace])
+    return;
+
+  for (auto* child : child_windows_) {
+    if ([child->window() parentWindow] == window_)
+      continue;
+
+    [window_ addChildWindow:child->window() ordered:NSWindowAbove];
+  }
+}
+
+void NativeWindowMac::OrderOutChildren() {
+  // Hide all children before hiding/minimizing the window.
+  // NativeWidgetNSWindowBridge::NotifyVisibilityChangeDown()
+  // will DCHECK otherwise.
+  DCHECK(child_windows_.size() == [[window_ childWindows] count]);
+
+  if (child_windows_.size() > 0) {
+    for (NativeWindowMac* child : child_windows_) {
+      [child->window() orderOut:nil];
+    }
+  }
 }
 
 void NativeWindowMac::SetFullScreen(bool fullscreen) {
@@ -1770,8 +1790,10 @@ void NativeWindowMac::InternalSetParentWindow(NativeWindow* parent,
     return;
 
   // Remove current parent window.
-  if ([window_ parentWindow])
+  if ([window_ parentWindow]) {
+    static_cast<NativeWindowMac*>(parent)->remove_child_window(this);
     [[window_ parentWindow] removeChildWindow:window_];
+  }
 
   // Set new parent window.
   // Note that this method will force the window to become visible.
@@ -1782,6 +1804,7 @@ void NativeWindowMac::InternalSetParentWindow(NativeWindow* parent,
     [parent->GetNativeWindow().GetNativeNSWindow()
         addChildWindow:window_
                ordered:NSWindowAbove];
+    static_cast<NativeWindowMac*>(parent)->add_child_window(this);
     [window_ setLevel:level];
   }
 }
